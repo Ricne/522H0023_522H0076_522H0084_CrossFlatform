@@ -6,8 +6,7 @@ class MyTextField extends StatefulWidget {
   final bool obscureText;
   final bool isEmailField;
 
-  const MyTextField({
-    super.key,
+  MyTextField({
     required this.controller,
     required this.hintText,
     required this.obscureText,
@@ -15,17 +14,25 @@ class MyTextField extends StatefulWidget {
   });
 
   @override
-  State<MyTextField> createState() => _MyTextFieldState();
+  _MyTextFieldState createState() => _MyTextFieldState();
 }
 
 class _MyTextFieldState extends State<MyTextField> {
-  String _errorText = '';
-  int _charCount = 0;
-  bool _isValidEmail = false;
+  late bool _isValidEmail;
+  late String _errorText;
+  late int _charCount;
 
-  bool _isEmailValid(String email) {
-    final emailRegex = RegExp(r'^[^@]+@gmail\.com$');
-    return emailRegex.hasMatch(email);
+  @override
+  void initState() {
+    super.initState();
+    _isValidEmail = true;
+    _errorText = '';
+    _charCount = 0;
+  }
+
+  bool _isEmailValid(String value) {
+    final emailRegex = RegExp(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$');
+    return emailRegex.hasMatch(value);
   }
 
   @override
@@ -40,31 +47,29 @@ class _MyTextFieldState extends State<MyTextField> {
         keyboardType:
             isEmail ? TextInputType.emailAddress : TextInputType.text,
         textInputAction: TextInputAction.next,
-        maxLength: isEmail ? 100 : null,
         onChanged: (value) {
-          if (isEmail) {
-            setState(() {
-              _charCount = value.length;
-              _isValidEmail = _isEmailValid(value);
-              _errorText = (_isValidEmail || value.isEmpty)
-                  ? ''
-                  : 'Please enter a valid email address. Ex: abc@gmail.com';
-            });
-          }
+          setState(() {
+            _charCount = value.length;
+            _isValidEmail = _isEmailValid(value);
+            _errorText = (_isValidEmail || value.isEmpty)
+                ? ''
+                : 'Please enter a valid email address. Ex: abc@gmail.com';
+          });
         },
         decoration: InputDecoration(
           hintText: widget.hintText,
           hintStyle: TextStyle(color: Colors.grey[500]),
-          counterText: isEmail ? '$_charCount/100' : null,
           filled: true,
           fillColor: Colors.white,
 
+          // Border styles
           enabledBorder: OutlineInputBorder(
             borderSide: BorderSide(
               color: isEmail
                   ? (_isValidEmail ? Colors.green : Colors.grey)
                   : Colors.grey,
             ),
+            borderRadius: BorderRadius.circular(15),
           ),
           focusedBorder: OutlineInputBorder(
             borderSide: BorderSide(
@@ -73,17 +78,17 @@ class _MyTextFieldState extends State<MyTextField> {
                   : Colors.blue,
               width: 2.0,
             ),
+            borderRadius: BorderRadius.circular(15),
           ),
           errorBorder: const OutlineInputBorder(
             borderSide: BorderSide(color: Colors.red, width: 2.0),
           ),
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(15),
           ),
 
-          suffixIcon: isEmail && _isValidEmail
-              ? const Icon(Icons.check_circle, color: Colors.green)
-              : null,
+          suffixText: isEmail ? '$_charCount/100' : null,
+          suffixStyle: TextStyle(color: Colors.grey[500]),
 
           errorText: isEmail && _errorText.isNotEmpty ? _errorText : null,
         ),
