@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "926312719257",
+    "project_id": "final-project-flatform",
+    "storage_bucket": "final-project-flatform.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:926312719257:android:3a011246db53bb32b0a908",
+        "android_client_info": {
+          "package_name": "com.example.final_project_flatform"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "926312719257-g5kv472c1dgpbcasmp54odvsn1mihheq.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDWgkG6kkD0UeNRZu78O91FhXB0hT-PCNc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "926312719257-g5kv472c1dgpbcasmp54odvsn1mihheq.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
