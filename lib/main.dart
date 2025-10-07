@@ -3,9 +3,11 @@ import 'package:final_project_flatform/services/noti_service.dart';
 import 'package:final_project_flatform/services/theme.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter_quill/flutter_quill.dart' show FlutterQuillLocalizations;
 
 
 void main() async {
@@ -52,13 +54,26 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   @override
-  Widget build(BuildContext context) {
-    final themeProvider = Provider.of<ThemeProvider>(context);
-    return MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData.light(),
-        darkTheme: ThemeData.dark(),
-        themeMode: themeProvider.themeMode,
-        home: AuthPage());
-  }
+Widget build(BuildContext context) {
+  final themeProvider = Provider.of<ThemeProvider>(context);
+  return MaterialApp(
+    debugShowCheckedModeBanner: false,
+    theme: ThemeData.light(),
+    darkTheme: ThemeData.dark(),
+    themeMode: themeProvider.themeMode,
+    
+    localizationsDelegates: const [
+      FlutterQuillLocalizations.delegate,
+      GlobalMaterialLocalizations.delegate,
+      GlobalWidgetsLocalizations.delegate,
+      GlobalCupertinoLocalizations.delegate,
+    ],
+    supportedLocales: const [
+      Locale('en'),
+    ],
+
+    home: AuthPage(),
+  );
+}
+
 }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_quill/quill_delta.dart';
 import 'package:universal_io/io.dart' as universal;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -10,32 +11,38 @@ import 'package:file_picker/file_picker.dart';
 import 'dart:math';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:flutter_quill/flutter_quill.dart';
 
 class Compose extends StatefulWidget {
   final String? initialFrom;
   final String? initialTo;
   final String? initialSubject;
   final String? initialBody;
+  final String? initialBodyDelta; 
   final String? userMail;
   final String? userMailRe;
   final bool isReply;
   final bool isDraft;
-  final String? draftId; // Lưu ID của nháp hiện tại
+  final String? draftId;
   final String? forwardedBody;
+  final String? forwardedBodyDelta; 
   
 
-  const Compose(
-      {super.key,
-      this.initialFrom,
-      this.initialTo,
-      this.initialSubject,
-      this.initialBody,
-      this.userMail,
-      this.userMailRe,
-      required this.isReply,
-      required this.isDraft,
-      this.draftId,
-      this.forwardedBody});
+  const Compose({
+    super.key,
+    this.initialFrom,
+    this.initialTo,
+    this.initialSubject,
+    this.initialBody,
+    this.initialBodyDelta, // ✅ 
+    this.userMail,
+    this.userMailRe,
+    required this.isReply,
+    required this.isDraft,
+    this.draftId,
+    this.forwardedBody,
+    this.forwardedBodyDelta, // ✅
+  });
 
   @override
   _ComposeState createState() => _ComposeState();
@@ -46,34 +53,43 @@ class _ComposeState extends State<Compose> {
   List<File> _mobileSelectedFiles = [];
   List<String> attachmentUrls = [];
   List<String> _webFileNames = [];
+  late QuillController _quillController;
+  final FocusNode _focusNode = FocusNode();
 
   PlatformFile? file;
   bool entered = false;
   bool isClicked = false;
   bool isCcBccExpanded = false;
   String? fromValue;
-  bool isSent = false; // Biến theo dõi trạng thái đã gửi
+  bool isSent = false;
   final currenUser = FirebaseAuth.instance.currentUser?.email;
-  // Tạo một messageID duy nhất
   final messageID = FirebaseFirestore.instance.collection('mails').doc().id;
 
   @override
   void initState() {
     super.initState();
     _loadUserEmail();
+    _quillController = QuillController.basic();
   }
 
+  // ✅ Hàm lưu draft với Delta
   Future<void> saveDraft() async {
     print(currenUser);
+    
+    // Lấy cả plain text và Delta
+    final bodyText = _quillController.document.toPlainText();
+    final bodyDelta = jsonEncode(_quillController.document.toDelta().toJson());
+    
     if (!isSent ||
         (subjectController.text.isNotEmpty ||
-            bodyController.text.isNotEmpty ||
+            bodyText.isNotEmpty ||
             toController.text.isNotEmpty)) {
       final draft = {
         'from': currenUser,
         'to': toController.text,
         'subject': subjectController.text,
-        'body': bodyController.text,
+        'body': bodyText, // Plain text để tìm kiếm
+        'bodyDelta': bodyDelta, // ✅ Lưu Delta để preserve formatting
         'time': DateTime.now().toIso8601String(),
       };
 
@@ -84,31 +100,28 @@ class _ComposeState extends State<Compose> {
             .collection('drafts')
             .get();
 
+        bool draftUpdated = false;
         for (var doc in queryDraftID.docs) {
-          final draftID = doc.id; // Lấy ID của email
-          print(widget.draftId);
-          print(draftID);
+          final draftID = doc.id;
           if (widget.draftId == draftID) {
-            // Cập nhật nháp nếu đã tồn tại draftId
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(currenUser)
                 .collection('drafts')
                 .doc(draftID)
                 .update(draft);
-
             print('Draft updated successfully!');
+            draftUpdated = true;
+            break;
           }
         }
-        print(widget.draftId);
-        if (widget.draftId == null) {
-          // Lưu mới nếu chưa có draftId
+        
+        if (widget.draftId == null || !draftUpdated) {
           await FirebaseFirestore.instance
               .collection('users')
               .doc(currenUser)
               .collection('drafts')
               .add(draft);
-
           print('Draft created successfully!');
         }
       } catch (e) {
@@ -119,6 +132,7 @@ class _ComposeState extends State<Compose> {
     }
   }
 
+  // ✅ Upload attachments (giữ nguyên)
   Future<List<String>> uploadAttachments({
     required List<File> mobileFiles,
     required List<Uint8List> webFiles,
@@ -158,10 +172,10 @@ class _ComposeState extends State<Compose> {
       }
     }
 
-    // Web files (webFileNames phải cùng số lượng với webFiles)
+    // Web files
     for (int i = 0; i < webFiles.length; i++) {
       final fileBytes = webFiles[i];
-      final fileName = webFileNames[i]; // 👈 Lấy tên gốc
+      final fileName = webFileNames[i];
       final resourceType = getResourceType(fileName);
 
       final request = http.MultipartRequest(
@@ -206,16 +220,33 @@ class _ComposeState extends State<Compose> {
   final TextEditingController ccController = TextEditingController();
   final TextEditingController bccController = TextEditingController();
   final TextEditingController subjectController = TextEditingController();
-  final TextEditingController bodyController = TextEditingController();
+  final TextEditingController bodyController = TextEditingController(); // Có thể bỏ vì dùng Quill
 
-  // Khởi tạo giá trị nếu là email phản hồi
+  // ✅ Load draft content với Delta
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    
     if (widget.isDraft == true) {
       toController.text = widget.initialTo!;
       subjectController.text = widget.initialSubject!;
-      bodyController.text = widget.initialBody!;
+      
+      // ✅ Load draft content với Delta nếu có
+      if (widget.initialBodyDelta != null && widget.initialBodyDelta!.isNotEmpty) {
+        try {
+          final deltaJson = jsonDecode(widget.initialBodyDelta!);
+          final delta = Delta.fromJson(deltaJson);
+          _quillController.document = Document.fromDelta(delta);
+        } catch (e) {
+          print('Error loading Delta: $e');
+          // Fallback về plain text
+          if (widget.initialBody != null && widget.initialBody!.isNotEmpty) {
+            _quillController.document = Document()..insert(0, widget.initialBody!);
+          }
+        }
+      } else if (widget.initialBody != null && widget.initialBody!.isNotEmpty) {
+        _quillController.document = Document()..insert(0, widget.initialBody!);
+      }
     }
 
     if (widget.initialTo != null) {
@@ -225,46 +256,57 @@ class _ComposeState extends State<Compose> {
       subjectController.text = widget.initialSubject!;
     }
 
-    // Nếu là mail Forward, thêm nội dung mail cũ vào body
-    if (widget.forwardedBody != null && widget.forwardedBody!.isNotEmpty) {
-      bodyController.text = widget.forwardedBody!;
+    // ✅ Load forwarded content với Delta
+    if (widget.forwardedBodyDelta != null && widget.forwardedBodyDelta!.isNotEmpty) {
+      try {
+        final deltaJson = jsonDecode(widget.forwardedBodyDelta!);
+        final delta = Delta.fromJson(deltaJson);
+        _quillController.document = Document.fromDelta(delta);
+      } catch (e) {
+        print('Error loading forwarded Delta: $e');
+        // Fallback về plain text
+        if (widget.forwardedBody != null && widget.forwardedBody!.isNotEmpty) {
+          _quillController.document = Document()..insert(0, widget.forwardedBody!);
+        }
+      }
+    } else if (widget.forwardedBody != null && widget.forwardedBody!.isNotEmpty) {
+      _quillController.document = Document()..insert(0, widget.forwardedBody!);
     }
   }
 
+  // ✅ Sửa lỗi sendMail - lưu cả plain text và Delta
   Future<void> sendMail() async {
     List<String> attachmentUrls = [];
-      if (kIsWeb) {
-        attachmentUrls = await uploadAttachments(
-          mobileFiles: [], // Mobile không có file
-          webFiles: _webSelectedFiles, // List<Uint8List>
-          webFileNames: _webFileNames, // 👈 List<String>, ví dụ: ['abc.pdf', 'img.png']
-        );
-      } else {
-        attachmentUrls = await uploadAttachments(
-          mobileFiles: _mobileSelectedFiles, // List<File>
-          webFiles: [], // Web không có file
-          webFileNames: [], // Bắt buộc truyền rỗng
-        );
-      }
-    print('Uploaded URLs: $attachmentUrls');
+    final bodyText = _quillController.document.toPlainText();
+    final bodyDelta = jsonEncode(_quillController.document.toDelta().toJson()); // ✅ Lưu Delta
 
-    if (attachmentUrls.isNotEmpty) {
-      print('There are ${attachmentUrls.length} attachment(s) uploaded.');
+    if (kIsWeb) {
+      attachmentUrls = await uploadAttachments(
+        mobileFiles: [],
+        webFiles: _webSelectedFiles,
+        webFileNames: _webFileNames,
+      );
     } else {
-      print('No attachments uploaded.');
+      attachmentUrls = await uploadAttachments(
+        mobileFiles: _mobileSelectedFiles,
+        webFiles: [],
+        webFileNames: [],
+      );
     }
+    print('Uploaded URLs: $attachmentUrls');
 
     if (widget.isReply) {
       Map<String, dynamic> emailDataReply = {
-        'from': fromValue, // Người phản hồi
-        'to': toController.text, // Người nhận phản hồi
+        'from': fromValue,
+        'to': toController.text,
         'subject': subjectController.text,
-        'body': bodyController.text,
-        'time': DateTime.now().toIso8601String(), // Thời gian phản hồi
-        'attachments': attachmentUrls.join(',') // Lưu URL file đính kèm
+        'body': bodyText, // ✅ Plain text
+        'bodyDelta': bodyDelta, // ✅ Formatted content
+        'time': DateTime.now().toIso8601String(),
+        'attachments': attachmentUrls.join(',')
       };
+      
       try {
-        // Lấy tất cả email trong sub-collection 'mails'
         final querySnapshot1 = await FirebaseFirestore.instance
             .collection('users')
             .doc(widget.userMail)
@@ -279,9 +321,8 @@ class _ComposeState extends State<Compose> {
 
         for (var doc in querySnapshot1.docs) {
           final data = doc.data();
-          final messageID = doc.id; // Lấy ID của email
+          final messageID = doc.id;
 
-          // Kiểm tra email phù hợp với subject và sender
           if (data['subject'].trim().toLowerCase() ==
                   subjectController.text.trim().toLowerCase() &&
               data['sender'].trim().toLowerCase() ==
@@ -294,16 +335,14 @@ class _ComposeState extends State<Compose> {
                 .update({
               'replies': FieldValue.arrayUnion([emailDataReply]),
             });
-
-            break; // Dừng lặp khi tìm thấy email phù hợp
+            break;
           }
         }
 
         for (var doc in querySnapshot2.docs) {
           final data = doc.data();
-          final messageID = doc.id; // Lấy ID của email
+          final messageID = doc.id;
 
-          // Kiểm tra email phù hợp với subject và sender
           if (data['subject'].trim().toLowerCase() ==
                   subjectController.text.trim().toLowerCase() &&
               data['receiver'].trim().toLowerCase() ==
@@ -316,12 +355,10 @@ class _ComposeState extends State<Compose> {
                 .update({
               'replies': FieldValue.arrayUnion([emailDataReply]),
             });
-
-            break; // Dừng lặp khi tìm thấy email phù hợp
+            break;
           }
         }
 
-        // Trả lại thông tin phản hồi để hiển thị trên màn hình trước
         Navigator.pop(context, emailDataReply);
       } catch (e) {
         print("Error updating email replies: $e");
@@ -336,7 +373,6 @@ class _ComposeState extends State<Compose> {
           .delete();
       print('Draft deleted successfully!');
 
-      // Lưu mail vào collection `mails`
       await FirebaseFirestore.instance
           .collection('users')
           .doc(fromValue)
@@ -347,95 +383,97 @@ class _ComposeState extends State<Compose> {
         'sender': fromValue,
         'receiver': toController.text,
         'subject': subjectController.text,
-        'text': bodyController.text,
+        'text': bodyText, // ✅ Plain text
+        'textDelta': bodyDelta, // ✅ Formatted content
         'time': currentTime.toIso8601String(),
         'isStarred': false,
         'unread': true,
         'color': getRandomColor().value,
-        'replies': [], // Khởi tạo replies rỗng
+        'replies': [],
       });
-      print('Draft convert to Mail successfully!');
-      // Lưu mail vào người nhận
+      
       await FirebaseFirestore.instance
           .collection('users')
-          .doc(toController.text) // ID người gửi
+          .doc(toController.text)
           .collection('mails')
-          .doc(widget.draftId) // Sử dụng messageID duy nhất
+          .doc(widget.draftId)
           .set({
         'messageID': widget.draftId,
         'sender': fromValue,
         'receiver': toController.text,
         'subject': subjectController.text.replaceFirst('Fwd:', '').trim(),
-        'text': bodyController.text,
+        'text': bodyText, // ✅ Plain text
+        'textDelta': bodyDelta, // ✅ Formatted content
         'time': currentTime.toIso8601String(),
         'isStarred': false,
         'unread': true,
         'color': getRandomColor().value,
-        'replies': [], // Khởi tạo replies rỗng
+        'replies': [],
       });
       Navigator.pop(context);
     } else {
-      //Nếu là mail mới
-      // Đọc dữ liệu email từ các trường nhập
+      // Mail mới
       Map<String, String> emailData = {
         'to': toController.text,
         'cc': ccController.text,
         'bcc': bccController.text,
         'subject': subjectController.text,
-        'body': bodyController.text,
+        'body': bodyText, // ✅ Plain text
+        'bodyDelta': bodyDelta, // ✅ Formatted content
         'attachments': attachmentUrls.join(','),
       };
 
       if (widget.forwardedBody != null && widget.forwardedBody!.isNotEmpty) {
-        // Tạo một messageID duy nhất
-        final messageID =
-            FirebaseFirestore.instance.collection('mails').doc().id;
+        final messageID = FirebaseFirestore.instance.collection('mails').doc().id;
         final currentTime = DateTime.now();
-        // Lưu mail vào người nhận
+        
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(toController.text) // ID người gửi
+            .doc(toController.text)
             .collection('mails')
-            .doc(messageID) // Sử dụng messageID duy nhất
+            .doc(messageID)
             .set({
           'messageID': messageID,
           'sender': fromValue,
           'receiver': toController.text,
           'subject': subjectController.text.replaceFirst('Fwd:', '').trim(),
-          'text': bodyController.text,
+          'text': bodyText, // ✅ Plain text
+          'textDelta': bodyDelta, // ✅ Formatted content
           'time': currentTime.toIso8601String(),
           'isStarred': false,
           'unread': true,
           'color': getRandomColor().value,
-          'replies': [], // Khởi tạo replies rỗng
+          'replies': [],
         });
-        // Lưu mail vào người gửi
+        
         await FirebaseFirestore.instance
             .collection('users')
-            .doc(fromValue) // ID người gửi
+            .doc(fromValue)
             .collection('mails')
-            .doc(messageID) // Sử dụng messageID duy nhất
+            .doc(messageID)
             .set({
           'messageID': messageID,
           'sender': fromValue,
           'receiver': toController.text,
           'subject': subjectController.text,
-          'text': bodyController.text,
+          'text': bodyText, // ✅ Plain text
+          'textDelta': bodyDelta, // ✅ Formatted content
           'time': currentTime.toIso8601String(),
           'isStarred': false,
           'unread': true,
           'color': getRandomColor().value,
-          'replies': [], // Khởi tạo replies rỗng
+          'replies': [],
         });
       }
 
       Navigator.pop(context, emailData);
-      // Xóa trường thông tin sau khi gửi
+      
+      // Clear fields
       toController.clear();
       ccController.clear();
       bccController.clear();
       subjectController.clear();
-      bodyController.clear();
+      _quillController.clear(); // ✅ Clear Quill controller
       setState(() {
         file = null;
         entered = false;
@@ -455,11 +493,10 @@ class _ComposeState extends State<Compose> {
 
   Future<void> pickFile() async {
     if (kIsWeb) {
-      // Dành cho web
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.any,
-        withData: true, // Quan trọng để lấy file.bytes
+        withData: true,
       );
 
       if (result != null) {
@@ -473,7 +510,6 @@ class _ComposeState extends State<Compose> {
         });
       }
     } else {
-      // Dành cho mobile
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
         type: FileType.any,
@@ -491,6 +527,8 @@ class _ComposeState extends State<Compose> {
 
   @override
   void dispose() {
+    _quillController.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -498,8 +536,8 @@ class _ComposeState extends State<Compose> {
   Widget build(BuildContext context) {
     return WillPopScope(
       onWillPop: () async {
-        await saveDraft(); // Gọi hàm lưu draft khi người dùng bấm back
-        return true; // Cho phép quay lại
+        await saveDraft();
+        return true;
       },
       child: Scaffold(
         appBar: AppBar(
@@ -532,7 +570,7 @@ class _ComposeState extends State<Compose> {
                   PopupMenuItem(
                     value: '4',
                     child: Text('Save Draft'),
-                    onTap: () {},
+                    onTap: () => saveDraft(), // ✅ Gọi saveDraft trực tiếp
                   ),
                 ];
               },
@@ -636,18 +674,51 @@ class _ComposeState extends State<Compose> {
 
   Widget _buildBodyField() {
     return Expanded(
-      child: TextField(
-        controller: bodyController,
-        cursorHeight: 24,
-        maxLines: null,
-        expands: true,
-        style: TextStyle(fontSize: 18),
-        decoration: InputDecoration(
-          hintText: entered == false ? "Compose email" : file!.name,
-          border: InputBorder.none,
-          hintStyle: TextStyle(fontSize: 18, color: Colors.grey[700]),
-          contentPadding: EdgeInsets.all(20),
-        ),
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              border: Border(bottom: BorderSide(color: Colors.grey[300]!)),
+            ),
+            child: QuillSimpleToolbar(
+              controller: _quillController,
+              config: const QuillSimpleToolbarConfig(
+                showBoldButton: true,
+                showItalicButton: true,
+                showUnderLineButton: true,
+                showStrikeThrough: true,
+                showColorButton: true,
+                showBackgroundColorButton: true,
+                showListNumbers: true,
+                showListBullets: true,
+                showCodeBlock: false,
+                showInlineCode: false,
+                showLink: true,
+                showUndo: true,
+                showRedo: true,
+                showFontSize: true,
+                showFontFamily: false,
+                showHeaderStyle: true,
+                showAlignmentButtons: true,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Container(
+              padding: EdgeInsets.all(16),
+              child: QuillEditor.basic(
+                controller: _quillController,
+                focusNode: _focusNode,
+                config: QuillEditorConfig(
+                  placeholder: entered == false ? "Compose email" : file?.name ?? "Compose email",
+                  padding: EdgeInsets.zero,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -683,41 +754,38 @@ class _ComposeState extends State<Compose> {
   Widget _buildAttachmentPreview() {
     return Column(
       children: [
-        // Xem trước file trên mobile
         for (var file in _mobileSelectedFiles)
           ListTile(
             leading: Icon(Icons.attach_file),
-            title: Text(file.path.split('/').last), // Hiển thị tên tệp
+            title: Text(file.path.split('/').last),
             trailing: IconButton(
               icon: Icon(Icons.delete),
               onPressed: () {
                 setState(() {
-                  _mobileSelectedFiles.remove(file); // Xóa tệp khỏi danh sách
+                  _mobileSelectedFiles.remove(file);
                 });
               },
             ),
           ),
-        // Xem trước file trên web
-        for (var fileBytes in _webSelectedFiles)
+        for (int i = 0; i < _webSelectedFiles.length; i++)
           Card(
             margin: EdgeInsets.symmetric(vertical: 8),
             child: ListTile(
-              leading: _isImage(fileBytes)
+              leading: _isImage(_webSelectedFiles[i])
                   ? Image.memory(
-                      fileBytes,
+                      _webSelectedFiles[i],
                       width: 50,
                       height: 50,
                       fit: BoxFit.cover,
                     )
-                  : Icon(Icons
-                      .insert_drive_file), // Icon mặc định nếu không phải ảnh
-              title: Text('File'), // Hiển thị tên chung cho web file
+                  : Icon(Icons.insert_drive_file),
+              title: Text(_webFileNames[i]), // ✅ Show actual filename
               trailing: IconButton(
                 icon: Icon(Icons.delete),
                 onPressed: () {
                   setState(() {
-                    _webSelectedFiles
-                        .remove(fileBytes); // Xóa tệp khỏi danh sách
+                    _webSelectedFiles.removeAt(i);
+                    _webFileNames.removeAt(i); // ✅ Remove matching filename
                   });
                 },
               ),
@@ -728,12 +796,10 @@ class _ComposeState extends State<Compose> {
   }
 
   bool _isImage(Uint8List fileBytes) {
-    // Kiểm tra byte đầu của file để xác định có phải ảnh không
-    // Bạn có thể cải thiện hàm này với các phương pháp xác định file cụ thể hơn
     try {
-      return Image.memory(fileBytes).width != null; // Sử dụng thử nếu là ảnh
+      return Image.memory(fileBytes).width != null;
     } catch (e) {
-      return false; // Không phải ảnh
+      return false;
     }
   }
 }

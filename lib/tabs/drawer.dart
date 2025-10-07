@@ -293,7 +293,7 @@ class _DrawersState extends State<Drawers> {
                           TextField(
                             controller: _newLabelNameController,
                             decoration: InputDecoration(
-                              hintText: 'PLease enter a new label name',
+                              hintText: 'Please enter a new label name',
                               border: OutlineInputBorder(),
                             ),
                           ),

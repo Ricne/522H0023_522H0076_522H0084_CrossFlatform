@@ -1,0 +1,15 @@
+[33m688d586[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{0}: rebase (abort): returning to refs/heads/main
+[33m9b28c14[m[33m ([m[1;32mout[m[33m, [m[1;32mHuynhThinhHung_code[m[33m)[m HEAD@{1}: pull origin main: Merge made by the 'ort' strategy.
+[33m18f6995[m HEAD@{2}: commit: update
+[33ma59a334[m[33m ([m[1;31morigin/HuynhThinhHung_code[m[33m)[m HEAD@{3}: commit: Register_page
+[33mce28548[m[33m ([m[1;31morigin/main[m[33m)[m HEAD@{4}: checkout: moving from main to HuynhThinhHung_code
+[33mce28548[m[33m ([m[1;31morigin/main[m[33m)[m HEAD@{5}: commit: 1 Commit for components
+[33m80f53cf[m HEAD@{6}: commit: Start coding
+[33mf5b4c9b[m HEAD@{7}: commit (cherry-pick): Test commit
+[33m688d586[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{8}: checkout: moving from 4fa995ba3ab3acac7cf75ec6bbe1c299162c31cf to main
+[33m4fa995b[m HEAD@{9}: commit: Test commit
+[33m16041db[m HEAD@{10}: commit: Test commit
+[33mdcf8507[m HEAD@{11}: commit: Commit test
+[33m961de43[m HEAD@{12}: pull origin main --rebase (start): checkout 961de43ca4aadd30705148d10475a0cb51f74873
+[33m688d586[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{13}: Branch: renamed refs/heads/master to refs/heads/main
+[33m688d586[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m)[m HEAD@{15}: commit (initial): Push Flutter source code
